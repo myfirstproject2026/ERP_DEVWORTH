@@ -1,4 +1,3 @@
-import secrets
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -8,6 +7,12 @@ from app import models, schemas
 from app.core.security import get_current_user, hash_password
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
+
+
+def _check_role_assignable(actor: models.User, role: models.Role) -> None:
+    """Only an owner may hand out the system (Owner) role."""
+    if role.is_system_role and not actor.is_owner:
+        raise HTTPException(status_code=403, detail="Only the company owner can assign this role")
 
 
 def _user_to_out(user: models.User) -> schemas.UserOut:
@@ -65,15 +70,29 @@ def user_stats(
     )
 
 
-@router.post("/invite", response_model=schemas.UserOut, status_code=201)
+@router.get("/options")
+def user_form_options(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Roles and branches for the invite/edit form, so it works without roles/branches module access."""
+    roles = db.query(models.Role).filter(models.Role.company_id == current_user.company_id).order_by(models.Role.id).all()
+    branches = db.query(models.Branch).filter(models.Branch.company_id == current_user.company_id).order_by(models.Branch.id).all()
+    return {
+        "roles": [{"id": r.id, "role_name": r.role_name} for r in roles
+                  if current_user.is_owner or not r.is_system_role],
+        "branches": [{"id": b.id, "branch_name": b.branch_name} for b in branches],
+    }
+
+
+@router.post("/invite",response_model=schemas.UserOut, status_code=201)
 def invite_user(
     payload: schemas.UserInviteRequest,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    existing = db.query(models.User).filter(
-        models.User.company_id == current_user.company_id, models.User.email == payload.email
-    ).first()
+    # Login looks users up by email across companies, so email must be globally unique
+    existing = db.query(models.User).filter(models.User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="A user with this email already exists")
 
@@ -82,6 +101,7 @@ def invite_user(
     ).first()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
+    _check_role_assignable(current_user, role)
 
     branch = db.query(models.Branch).filter(
         models.Branch.id == payload.branch_id, models.Branch.company_id == current_user.company_id
@@ -89,12 +109,8 @@ def invite_user(
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
-    temp_password = None
-    password_hash = None
-    if payload.login_method == "password":
-        temp_password = secrets.token_urlsafe(8)
-        password_hash = hash_password(temp_password)
-
+    # The admin sets the password at invite time, so the account can sign in immediately
+    # through the normal /api/auth/login flow (which rejects status "invited").
     user = models.User(
         company_id=current_user.company_id,
         branch_id=payload.branch_id,
@@ -102,9 +118,9 @@ def invite_user(
         full_name=payload.full_name,
         email=payload.email,
         mobile_number=payload.mobile_number,
-        password_hash=password_hash,
+        password_hash=hash_password(payload.password),
         login_method=payload.login_method,
-        status="invited",
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -143,6 +159,24 @@ def update_user(
         raise HTTPException(status_code=400, detail="Cannot change the status of the company owner")
 
     update_data = payload.model_dump(exclude_unset=True)
+    new_password = update_data.pop("password", None)
+    if new_password:
+        user.password_hash = hash_password(new_password)
+    if "email" in update_data and update_data["email"] != user.email:
+        if db.query(models.User).filter(models.User.email == update_data["email"]).first():
+            raise HTTPException(status_code=400, detail="A user with this email already exists")
+    if "role_id" in update_data and update_data["role_id"] != user.role_id:
+        new_role = db.query(models.Role).filter(
+            models.Role.id == update_data["role_id"], models.Role.company_id == current_user.company_id
+        ).first()
+        if not new_role:
+            raise HTTPException(status_code=404, detail="Role not found")
+        _check_role_assignable(current_user, new_role)
+    if "branch_id" in update_data and update_data["branch_id"] is not None:
+        if not db.query(models.Branch).filter(
+            models.Branch.id == update_data["branch_id"], models.Branch.company_id == current_user.company_id
+        ).first():
+            raise HTTPException(status_code=404, detail="Branch not found")
     for field, value in update_data.items():
         setattr(user, field, value)
 

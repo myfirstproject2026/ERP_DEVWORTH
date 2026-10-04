@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Plus, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { Plus, X, Loader2, CheckCircle2, Download } from 'lucide-react'
 import { hrApi } from '../../api/services'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -15,6 +15,7 @@ export default function PayslipsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [marking, setMarking] = useState(null)
+  const [downloading, setDownloading] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -33,6 +34,18 @@ export default function PayslipsPage() {
       alert(err.response?.data?.detail || 'Could not update payslip')
     } finally {
       setMarking(null)
+    }
+  }
+
+  const handleDownload = async (id) => {
+    setDownloading(id)
+    try {
+      const { downloadPayslipPdf } = await import('../../utils/payslipPdf')
+      await downloadPayslipPdf(id)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not generate payslip PDF')
+    } finally {
+      setDownloading(null)
     }
   }
 
@@ -72,7 +85,15 @@ export default function PayslipsPage() {
                 <td className="px-5 py-3.5 text-red-500">-{formatINR(p.deductions)}</td>
                 <td className="px-5 py-3.5 font-semibold text-slate-900">{formatINR(p.net_pay)}</td>
                 <td className="px-5 py-3.5"><StatusPill status={p.status} /></td>
-                <td className="px-5 py-3.5 text-right">
+                <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                  <button
+                    onClick={() => handleDownload(p.id)}
+                    disabled={downloading === p.id}
+                    title="Download payslip PDF"
+                    className="inline-flex items-center justify-center h-8 w-8 mr-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 align-middle"
+                  >
+                    {downloading === p.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  </button>
                   {p.status !== 'paid' && (
                     <button
                       onClick={() => handleMarkPaid(p.id)}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Plus, X, Loader2, Trash2, IndianRupee } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, X, Loader2, Trash2, IndianRupee, Eye } from 'lucide-react'
 import { salesCrmApi } from '../../api/services'
 import LineItemsEditor from '../../components/LineItemsEditor'
 import { InvoiceStatusPill } from './SalesOverviewPage'
@@ -13,6 +14,7 @@ function formatINR(value) {
 }
 
 export default function InvoicesPage() {
+  const navigate = useNavigate()
   const [invoices, setInvoices] = useState([])
   const [statusFilter, setStatusFilter] = useState('All')
   const [createOpen, setCreateOpen] = useState(false)
@@ -84,6 +86,12 @@ export default function InvoicesPage() {
                         <IndianRupee size={14} />
                       </button>
                     )}
+                    <button
+                      onClick={() => navigate(`/sales/invoices/${inv.id}`)}
+                      className="h-8 px-3 rounded-lg border border-slate-200 flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      <Eye size={14} /> View
+                    </button>
                     <button
                       onClick={() => handleDelete(inv)}
                       className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-red-500 hover:bg-red-50"

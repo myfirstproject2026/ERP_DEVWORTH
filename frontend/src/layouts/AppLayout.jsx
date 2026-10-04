@@ -1,16 +1,20 @@
-import React, { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import React, { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutGrid, Building2, GitBranch, Users, ShieldCheck,
+  LayoutGrid, Building2, List, GitBranch, Users, ShieldCheck,
   TrendingUp, Package, Truck, Factory, UserSquare2, Landmark,
-  Headphones, ChevronDown, Search, MessageCircle, Bell, Sparkles,
+  Headphones, PlusSquare, ChevronDown, Search, MessageCircle, Bell, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { companyApi } from '../api/services'
+import client from '../api/client'
 
 const mainNav = [{ to: '/dashboard', label: 'Dashboard', icon: LayoutGrid, module: 'dashboard' }]
 
 const loginSetupNav = [
+  { to: '/company-list', label: 'Company List', icon: List, ownerOnly: true },
   { to: '/company-profile', label: 'Company Profile', icon: Building2, module: 'company_profile' },
+  { to: '/register', label: 'Company Registration', icon: PlusSquare, ownerOnly: true },
   { to: '/branches', label: 'Branches', icon: GitBranch, module: 'branches' },
   { to: '/users', label: 'Users', icon: Users, module: 'users' },
   { to: '/roles', label: 'Roles & Permissions', icon: ShieldCheck, module: 'roles_permissions' },
@@ -50,7 +54,16 @@ export default function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
-  const canSee = (item) => user?.is_owner || !item.module || (user?.allowed_modules || []).includes(item.module)
+  const [logoUrl, setLogoUrl] = useState(null)
+  const location = useLocation()
+
+  // Refetch on navigation so a newly uploaded logo appears without a reload
+  useEffect(() => {
+    if (!user) return
+    companyApi.getProfile().then((res) => setLogoUrl(res.data.logo_url)).catch(() => {})
+  }, [user, location.pathname])
+  const logoSrc = logoUrl ? `${client.defaults.baseURL}${logoUrl}` : null
+  const canSee = (item) => user?.is_owner || (!item.ownerOnly && (!item.module || (user?.allowed_modules || []).includes(item.module)))
 
   const initials = user?.company_name
     ? user.company_name
@@ -75,11 +88,11 @@ export default function AppLayout() {
       {/* SIDEBAR */}
       <aside className="w-60 shrink-0 border-r border-slate-200 bg-white flex flex-col">
         <div className="h-16 flex items-center gap-2 px-5 border-b border-slate-100">
-          <div className="h-8 w-8 rounded-lg bg-navy-700 text-white flex items-center justify-center font-bold text-sm">
-            N
+          <div className="h-8 w-8 rounded-lg bg-navy-700 text-white flex items-center justify-center font-bold text-sm overflow-hidden">
+            {logoSrc ? <img src={logoSrc} alt="Company logo" className="h-full w-full object-contain bg-white" /> : 'DW'}
           </div>
           <div className="leading-tight">
-            <p className="font-semibold text-sm text-slate-900">Nexus ERP</p>
+            <p className="font-semibold text-sm text-slate-900">Devworth ERP</p>
             <p className="text-[10px] tracking-wide text-slate-400 font-medium">MULTI-COMPANY SUITE</p>
           </div>
         </div>
@@ -136,8 +149,8 @@ export default function AppLayout() {
         {/* TOPBAR */}
         <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 gap-4">
           <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-left min-w-[220px]">
-            <div className="h-7 w-7 rounded bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
-              {initials}
+            <div className="h-7 w-7 rounded bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold overflow-hidden">
+              {logoSrc ? <img src={logoSrc} alt="Company logo" className="h-full w-full object-contain" /> : initials}
             </div>
             <div className="leading-tight">
               <p className="text-sm font-semibold text-slate-900">{user?.company_name || 'Company'}</p>

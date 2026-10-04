@@ -1,19 +1,42 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Loader2 } from 'lucide-react'
 import { companyApi } from  "../api/services";
+import client from '../api/client'
 
 export default function CompanyProfileEditPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
 
   useEffect(() => {
     companyApi.getProfile().then((res) => setForm(res.data))
   }, [])
 
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }))
+
+  const handleLogoChange = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo must be 2MB or smaller')
+      return
+    }
+    setUploading(true)
+    setError('')
+    try {
+      const res = await companyApi.uploadLogo(file)
+      update('logo_url', res.data.logo_url)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not upload logo')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleSave = async (e) => {
     e.preventDefault()
@@ -67,11 +90,14 @@ export default function CompanyProfileEditPage() {
 
       <form id="edit-company-form" onSubmit={handleSave} className="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg">
-            {initials}
+          <div className="h-14 w-14 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg overflow-hidden">
+            {form.logo_url ? (
+              <img src={`${client.defaults.baseURL}${form.logo_url}`} alt="Company logo" className="h-full w-full object-contain" />
+            ) : initials}
           </div>
-          <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
-            <Upload size={14} /> Change logo
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={handleLogoChange} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center disabled:opacity-60 gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Change logo
           </button>
           <p className="text-xs text-slate-400">PNG or SVG, min 256×256px, up to 2MB</p>
         </div>

@@ -35,5 +35,4 @@ class Settings(BaseSettings):
             if o.strip()
         ]
 
-
 settings = Settings()

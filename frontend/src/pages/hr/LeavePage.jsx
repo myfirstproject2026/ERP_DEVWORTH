@@ -52,7 +52,9 @@ export default function LeavePage() {
           ))}
         </div>
         <button
-          onClick={() => setModalOpen(true)}
+          onClick={() => {
+            hrApi.listLeaveTypes().then((res) => setLeaveTypes(res.data)).finally(() => setModalOpen(true))
+          }}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
           <Plus size={15} /> New leave request

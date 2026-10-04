@@ -315,6 +315,88 @@ def list_leave_types(current_user: models.User = Depends(get_current_user), db: 
     return db.query(models.LeaveType).filter(models.LeaveType.company_id == current_user.company_id).all()
 
 
+@router.post("/leave-types", response_model=schemas.LeaveTypeOut, status_code=201)
+def create_leave_type(
+    payload: schemas.LeaveTypeCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    name = payload.leave_type_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Leave type name is required")
+    if payload.annual_quota < 0:
+        raise HTTPException(status_code=400, detail="Annual quota cannot be negative")
+    exists = db.query(models.LeaveType).filter(
+        models.LeaveType.company_id == current_user.company_id,
+        sqlfunc.lower(models.LeaveType.leave_type_name) == name.lower(),
+    ).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="A leave type with this name already exists")
+    lt = models.LeaveType(
+        company_id=current_user.company_id, leave_type_name=name,
+        annual_quota=payload.annual_quota, is_paid=payload.is_paid,
+    )
+    db.add(lt)
+    db.commit()
+    db.refresh(lt)
+    return lt
+
+
+def _get_leave_type(db: Session, company_id: int, leave_type_id: int) -> models.LeaveType:
+    lt = db.query(models.LeaveType).filter(
+        models.LeaveType.id == leave_type_id, models.LeaveType.company_id == company_id
+    ).first()
+    if not lt:
+        raise HTTPException(status_code=404, detail="Leave type not found")
+    return lt
+
+
+@router.put("/leave-types/{leave_type_id}", response_model=schemas.LeaveTypeOut)
+def update_leave_type(
+    leave_type_id: int,
+    payload: schemas.LeaveTypeCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lt = _get_leave_type(db, current_user.company_id, leave_type_id)
+    name = payload.leave_type_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Leave type name is required")
+    if payload.annual_quota < 0:
+        raise HTTPException(status_code=400, detail="Annual quota cannot be negative")
+    dup = db.query(models.LeaveType).filter(
+        models.LeaveType.company_id == current_user.company_id,
+        models.LeaveType.id != lt.id,
+        sqlfunc.lower(models.LeaveType.leave_type_name) == name.lower(),
+    ).first()
+    if dup:
+        raise HTTPException(status_code=400, detail="A leave type with this name already exists")
+    lt.leave_type_name = name
+    lt.annual_quota = payload.annual_quota
+    lt.is_paid = payload.is_paid
+    db.commit()
+    db.refresh(lt)
+    return lt
+
+
+@router.delete("/leave-types/{leave_type_id}", status_code=204)
+def delete_leave_type(
+    leave_type_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lt = _get_leave_type(db, current_user.company_id, leave_type_id)
+    used = db.query(models.LeaveRequest).filter(models.LeaveRequest.leave_type_id == lt.id).count()
+    if used:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete: {used} leave request(s) use this leave type",
+        )
+    db.delete(lt)
+    db.commit()
+    return None
+
+
 @router.get("/leave-requests", response_model=list[schemas.LeaveRequestOut])
 def list_leave_requests(
     employee_id: Optional[int] = Query(None),
@@ -568,6 +650,59 @@ def list_payslips(
         )
         for p in payslips
     ]
+
+
+@router.get("/payslips/{payslip_id}/detail", response_model=schemas.PayslipDetailOut)
+def get_payslip_detail(
+    payslip_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    p = db.query(models.Payslip).filter(
+        models.Payslip.id == payslip_id, models.Payslip.company_id == current_user.company_id
+    ).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    emp = p.employee
+
+    period_start = date(p.pay_year, p.pay_month, 1)
+    period_end = (date(p.pay_year + 1, 1, 1) if p.pay_month == 12 else date(p.pay_year, p.pay_month + 1, 1)) - timedelta(days=1)
+
+    records = db.query(models.AttendanceRecord).filter(
+        models.AttendanceRecord.employee_id == emp.id,
+        models.AttendanceRecord.attendance_date >= period_start,
+        models.AttendanceRecord.attendance_date <= period_end,
+    ).all()
+    count = lambda s: sum(1 for r in records if r.status == s)
+
+    leave_days: dict = {}
+    approved = db.query(models.LeaveRequest).filter(
+        models.LeaveRequest.employee_id == emp.id,
+        models.LeaveRequest.status == "approved",
+        models.LeaveRequest.start_date <= period_end,
+        models.LeaveRequest.end_date >= period_start,
+    ).all()
+    for lr in approved:
+        days = _days_between(max(lr.start_date, period_start), min(lr.end_date, period_end))
+        key = (lr.leave_type.leave_type_name, lr.leave_type.is_paid)
+        leave_days[key] = leave_days.get(key, Decimal("0")) + days
+
+    return schemas.PayslipDetailOut(
+        id=p.id, employee_id=p.employee_id, employee_name=emp.full_name,
+        pay_month=p.pay_month, pay_year=p.pay_year, basic=p.basic, hra=p.hra,
+        other_allowances=p.other_allowances, deductions=p.deductions, net_pay=p.net_pay,
+        status=p.status, paid_on=p.paid_on,
+        employee_code=emp.employee_code, designation=emp.designation,
+        department_name=emp.department.department_name if emp.department else None,
+        branch_name=emp.branch.branch_name, employment_type=emp.employment_type,
+        date_of_joining=emp.date_of_joining, pan=emp.pan,
+        bank_account_number=emp.bank_account_number, bank_ifsc=emp.bank_ifsc,
+        attendance_recorded=len(records), present_days=count("present"), half_days=count("half_day"),
+        absent_days=count("absent"), on_leave_days=count("on_leave"),
+        holiday_days=count("holiday"), week_off_days=count("week_off"),
+        leave_lines=[
+            schemas.PayslipLeaveLine(leave_type_name=n, is_paid=paid, days=d)
+            for (n, paid), d in sorted(leave_days.items())
+        ],
+    )
 
 
 @router.post("/payslips", response_model=schemas.PayslipOut, status_code=201)

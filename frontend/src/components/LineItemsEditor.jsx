@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { inventoryApi } from '../api/services'
 
 function formatINR(value) {
   const n = Number(value || 0)
@@ -12,21 +13,25 @@ export default function LineItemsEditor({ items, onChange, products = null }) {
     onChange(next)
   }
 
-  const selectProduct = (idx, productId) => {
-    const p = products?.find((p) => String(p.id) === String(productId))
+  const selectProduct = (idx, p) => {
     const next = items.map((it, i) =>
       i === idx
         ? {
             ...it,
-            product_id: p ? p.id : null,
-            product_name: p ? p.product_name : it.product_name,
-            unit: p ? p.unit_of_measure : it.unit,
-            unit_price: p ? p.cost_price : it.unit_price,
-            tax_rate: p ? p.tax_rate : it.tax_rate,
+            product_id: p.id,
+            product_name: p.product_name,
+            unit: p.unit_of_measure,
+            unit_price: p.cost_price,
+            tax_rate: p.tax_rate,
           }
         : it
     )
     onChange(next)
+  }
+
+  // Typing edits the name only; the line stays unlinked until an existing product is picked.
+  const typeProduct = (idx, text) => {
+    onChange(items.map((it, i) => (i === idx ? { ...it, product_name: text, product_id: null } : it)))
   }
 
   const addRow = () => {
@@ -69,16 +74,13 @@ export default function LineItemsEditor({ items, onChange, products = null }) {
               <tr key={idx} className="border-b border-slate-100 last:border-0">
                 <td className="px-2 py-1.5">
                   {products ? (
-                    <select
-                      className="cell"
-                      value={it.product_id || ''}
-                      onChange={(e) => selectProduct(idx, e.target.value)}
-                    >
-                      <option value="">Select product...</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>{p.product_name} ({p.sku})</option>
-                      ))}
-                    </select>
+                    <ProductSearchInput
+                      value={it.product_name}
+                      linked={!!it.product_id}
+                      initialProducts={products}
+                      onType={(text) => typeProduct(idx, text)}
+                      onSelect={(p) => selectProduct(idx, p)}
+                    />
                   ) : (
                     <input
                       className="cell"
@@ -138,6 +140,78 @@ export default function LineItemsEditor({ items, onChange, products = null }) {
         .cell { width: 100%; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.35rem 0.5rem; font-size: 0.8125rem; outline: none; }
         .cell:focus { border-color: #60a5fa; box-shadow: 0 0 0 1px #60a5fa; }
       `}</style>
+    </div>
+  )
+}
+
+// Typeable product field; suggestions come from the existing inventory products search API.
+function ProductSearchInput({ value, linked, initialProducts, onType, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const [results, setResults] = useState(initialProducts)
+  const [pos, setPos] = useState(null)
+  const inputRef = useRef(null)
+  const reqId = useRef(0)
+
+  useEffect(() => {
+    if (!open) return
+    const q = (value || '').trim()
+    if (!q) { setResults(initialProducts); return }
+    const id = ++reqId.current
+    const t = setTimeout(() => {
+      inventoryApi.listProducts({ search: q }).then((res) => {
+        if (id === reqId.current) setResults(res.data)
+      }).catch(() => {})
+    }, 250)
+    return () => clearTimeout(t)
+  }, [value, open, initialProducts])
+
+  const show = () => {
+    const r = inputRef.current.getBoundingClientRect()
+    setPos({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 260) })
+    setOpen(true)
+  }
+
+  const pick = (p) => { onSelect(p); setOpen(false) }
+
+  const handleBlur = () => {
+    // Link automatically when the typed text exactly matches an existing product name.
+    if (!linked) {
+      const exact = results.find((p) => p.product_name.toLowerCase() === (value || '').trim().toLowerCase())
+      if (exact) onSelect(exact)
+    }
+    setTimeout(() => setOpen(false), 150)
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        className="cell"
+        value={value}
+        placeholder="Type product name..."
+        autoComplete="off"
+        onFocus={show}
+        onChange={(e) => { onType(e.target.value); if (!open) show() }}
+        onBlur={handleBlur}
+      />
+      {open && pos && (
+        <ul
+          className="fixed z-[60] max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm"
+          style={{ left: pos.left, top: pos.top, width: pos.width }}
+        >
+          {results.length === 0 && <li className="px-3 py-2 text-xs text-slate-400">No matching products</li>}
+          {results.map((p) => (
+            <li
+              key={p.id}
+              onMouseDown={(e) => { e.preventDefault(); pick(p) }}
+              className="px-3 py-1.5 cursor-pointer hover:bg-slate-50 flex justify-between gap-3"
+            >
+              <span className="text-slate-800">{p.product_name}</span>
+              <span className="text-xs text-slate-400">{p.sku}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

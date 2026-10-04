@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, Landmark, AlertTriangle, Download, Sparkles, MessageCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, Landmark, AlertTriangle, Download, ChevronDown, FileText, FileSpreadsheet, Sparkles, MessageCircle } from 'lucide-react'
 import { dashboardApi, companyApi } from  "../api/services";
 import { useAuth } from '../context/AuthContext'
 
@@ -19,6 +19,10 @@ export default function DashboardPage() {
   const [followup, setFollowup] = useState([])
   const [companyName, setCompanyName] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const exportRef = useRef(null)
 
   useEffect(() => {
     Promise.all([
@@ -37,13 +41,46 @@ export default function DashboardPage() {
         setFollowup(fu.data)
         setCompanyName(comp.data.company_name)
       })
+      .catch((err) => setLoadError(err.response?.data?.detail || 'Could not load dashboard data'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    const close = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  const handleExport = async (kind) => {
+    setExportOpen(false)
+    setExportError('')
+    try {
+      const res = await dashboardApi.exportFile(kind)
+      const filename = kind === 'pdf' ? 'DevWorth_Dashboard_Data.pdf' : 'DevWorth_Dashboard_Data.xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(`${kind} export failed`, err)
+      setExportError(`Could not download the ${kind === 'pdf' ? 'PDF' : 'Excel file'}. Please try again.`)
+    }
+  }
 
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   if (loading) {
     return <div className="p-8 text-slate-400 text-sm">Loading dashboard…</div>
+  }
+
+  if (loadError) {
+    return <div className="p-8 text-red-600 text-sm">{loadError}</div>
   }
 
   return (
@@ -56,9 +93,24 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
-            <Download size={15} /> Export report
-          </button>
+<div className="relative" ref={exportRef}>
+            <button
+              onClick={() => setExportOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <Download size={15} /> Export report <ChevronDown size={14} />
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                <button onClick={() => handleExport('pdf')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <FileText size={15} className="text-red-500" /> Download PDF
+                </button>
+                <button onClick={() => handleExport('excel')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <FileSpreadsheet size={15} className="text-green-600" /> Download Excel
+                </button>
+              </div>
+            )}
+          </div>
           <Link
             to="/ai-assistant"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
@@ -67,6 +119,10 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {exportError && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{exportError}</div>
+      )}
 
       {/* AI Insight banner */}
       <div className="bg-navy-800 text-white rounded-xl px-5 py-4 mb-5 flex items-center gap-4">
@@ -120,7 +176,7 @@ export default function DashboardPage() {
       {/* P&L CHART */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 mb-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-slate-900 text-sm">Profit & amp; loss — last 6 months</h3>
+          <h3 className="font-semibold text-slate-900 text-sm">Profit &amp; loss — last 6 months</h3>
           <span className="text-xs text-slate-400">₹ in lakhs</span>
         </div>
         <ResponsiveContainer width="100%" height={220}>

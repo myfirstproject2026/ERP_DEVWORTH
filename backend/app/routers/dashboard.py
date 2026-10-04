@@ -1,11 +1,13 @@
 from datetime import date
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
 from app.core.security import get_current_user
+from app import services_dashboard_export as export
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -204,3 +206,42 @@ def get_customer_followup(
             days_overdue=r.days_overdue,
         ))
     return result
+
+
+def _export_data(current_user: models.User, db: Session):
+    # Reuse the Dashboard endpoints' own logic so exports always match what the Dashboard shows.
+    company = db.query(models.Company).filter(models.Company.id == current_user.company_id).first()
+    return (
+        company.company_name if company else "",
+        get_summary(current_user, db),
+        get_profit_loss(current_user, db),
+        get_production(current_user, db),
+        get_attendance(current_user, db),
+        get_customer_followup(current_user, db),
+    )
+
+
+@router.get("/export/excel")
+def export_dashboard_excel(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    company_name, *data = _export_data(current_user, db)
+    return Response(
+        content=export.build_excel(company_name, *data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{export.EXCEL_FILENAME}"'},
+    )
+
+
+@router.get("/export/pdf")
+def export_dashboard_pdf(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    company_name, *data = _export_data(current_user, db)
+    return Response(
+        content=export.build_pdf(company_name, current_user.full_name, *data),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{export.PDF_FILENAME}"'},
+    )

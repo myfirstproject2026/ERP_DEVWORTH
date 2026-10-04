@@ -684,10 +684,21 @@ def create_invoice(
         .order_by(models.ChartOfAccount.account_code)
         .first()
     )
-    if ar_account and revenue_account:
+    # journal_entries.branch_id is NOT NULL, but an invoice's branch is optional, so
+    # fall back to the user's branch, then the company's first branch.
+    je_branch_id = payload.branch_id or current_user.branch_id
+    if not je_branch_id:
+        first_branch = (
+            db.query(models.Branch)
+            .filter(models.Branch.company_id == current_user.company_id)
+            .order_by(models.Branch.id)
+            .first()
+        )
+        je_branch_id = first_branch.id if first_branch else None
+    if ar_account and revenue_account and je_branch_id:
         entry_number = _next_document_number(db, current_user.company_id, models.JournalEntry, "entry_number", "JE")
         je = models.JournalEntry(
-            company_id=current_user.company_id, branch_id=payload.branch_id, entry_number=entry_number,
+            company_id=current_user.company_id, branch_id=je_branch_id, entry_number=entry_number,
             entry_date=payload.invoice_date, reference=invoice.invoice_number,
             narration=f"Sales invoice {invoice.invoice_number}",
             status="posted", total_debit=total, total_credit=total,

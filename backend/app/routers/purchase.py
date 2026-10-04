@@ -36,6 +36,26 @@ def _calc_line_items(items: List[schemas.LineItemIn]):
     return subtotal, tax_amount, subtotal + tax_amount, rows
 
 
+def _ensure_product_link(db: Session, company_id: int, poi: models.PurchaseOrderItem, branch_id: int) -> None:
+    """Link a typed-name PO line to an inventory product: reuse a same-named product,
+    otherwise create it from the line's own details so the goods can be stocked."""
+    if poi.product_id:
+        return
+    name = (poi.product_name or "").strip()
+    product = db.query(models.Product).filter(
+        models.Product.company_id == company_id,
+        sqlfunc.lower(models.Product.product_name) == name.lower(),
+    ).first()
+    if not product:
+        product = models.Product(
+            company_id=company_id, product_name=name, unit_of_measure=poi.unit or "unit",
+            cost_price=poi.unit_price, tax_rate=poi.tax_rate, primary_branch_id=branch_id,
+        )
+        db.add(product)
+        db.flush()
+    poi.product_id = product.id
+
+
 def _supplier_out(db: Session, s: models.Supplier) -> schemas.SupplierOut:
     open_po = db.query(models.PurchaseOrder).filter(
         models.PurchaseOrder.supplier_id == s.id,
@@ -395,11 +415,7 @@ def create_receipt(
         ).first()
         if not poi:
             raise HTTPException(status_code=404, detail=f"PO line item {item.purchase_order_item_id} not found")
-        if not poi.product_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"'{poi.product_name}' isn't linked to an inventory product — link it before receiving",
-            )
+        _ensure_product_link(db, current_user.company_id, poi, po.branch_id)
         remaining = poi.quantity - poi.received_quantity
         if item.quantity_received > remaining:
             raise HTTPException(

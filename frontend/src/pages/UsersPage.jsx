@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Plus, Search, Pencil, Trash2, X, Loader2 } from 'lucide-react'
-import { usersApi, branchesApi, rolesApi } from  "../api/services";
+import { usersApi } from  "../api/services";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -29,8 +29,10 @@ export default function UsersPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    branchesApi.list().then((res) => setBranches(res.data))
-    rolesApi.list().then((res) => setRoles(res.data))
+    usersApi.options().then((res) => {
+      setBranches(res.data.branches)
+      setRoles(res.data.roles)
+    })
   }, [])
 
   const handleDelete = async (user) => {
@@ -203,6 +205,7 @@ function UserModal({ user, branches, roles, onClose, onSaved }) {
     full_name: user?.full_name || '',
     mobile_number: user?.mobile_number || '',
     email: user?.email || '',
+    password: '',
     role_id: user?.role_id || roles[0]?.id || '',
     branch_id: user?.branch_id || branches[0]?.id || '',
     login_method: 'email_invite',
@@ -226,12 +229,14 @@ function UserModal({ user, branches, roles, onClose, onSaved }) {
           role_id: Number(form.role_id),
           branch_id: Number(form.branch_id),
           status: form.status,
+          ...(form.password ? { password: form.password } : {}),
         })
       } else {
         await usersApi.invite({
           full_name: form.full_name,
           mobile_number: form.mobile_number,
           email: form.email,
+          password: form.password,
           role_id: Number(form.role_id),
           branch_id: Number(form.branch_id),
           login_method: form.login_method,
@@ -268,6 +273,16 @@ function UserModal({ user, branches, roles, onClose, onSaved }) {
           <Field label="Email address" required>
             <input type="email" className="input" value={form.email} onChange={(e) => update('email', e.target.value)} placeholder="name@company.com" />
           </Field>
+          <Field label={isEdit ? 'New password' : 'Password'} required={!isEdit}>
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="input"
+              value={form.password}
+              onChange={(e) => update('password', e.target.value)}
+              placeholder={isEdit ? 'Leave blank to keep current password' : 'Minimum 8 characters'}
+            />
+          </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Role" required>
               <select className="input" value={form.role_id} onChange={(e) => update('role_id', e.target.value)}>
@@ -293,9 +308,9 @@ function UserModal({ user, branches, roles, onClose, onSaved }) {
             <>
               <Field label="Login method">
                 <select className="input" value={form.login_method} onChange={(e) => update('login_method', e.target.value)}>
-                  <option value="email_invite">Email invite (set own password)</option>
-                  <option value="password">Set temporary password</option>
-                  <option value="otp">OTP login only</option>
+                  <option value="email_invite">Email + password</option>
+                  <option value="password">Password only</option>
+                  <option value="otp">OTP login (password kept as fallback)</option>
                 </select>
               </Field>
               <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -315,7 +330,7 @@ function UserModal({ user, branches, roles, onClose, onSaved }) {
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50">Cancel</button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.full_name || !form.email}
+            disabled={saving || !form.full_name || !form.email || !form.role_id || !form.branch_id || (!isEdit && form.password.length < 8) || (isEdit && form.password && form.password.length < 8)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
             {saving && <Loader2 size={14} className="animate-spin" />}

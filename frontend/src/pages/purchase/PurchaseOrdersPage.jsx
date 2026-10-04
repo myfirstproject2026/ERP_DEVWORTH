@@ -159,8 +159,8 @@ function PurchaseOrderModal({ onClose, onSaved }) {
     setError('')
     if (!supplierId) { setError('Please select a supplier'); return }
     if (!branchId) { setError('Please select a branch'); return }
-    const validItems = items.filter((it) => it.product_id)
-    if (validItems.length === 0) { setError('Add at least one line item and select a product for each'); return }
+    const validItems = items.filter((it) => (it.product_name || '').trim())
+    if (validItems.length === 0) { setError('Add at least one line item with a product name'); return }
 
     setSaving(true)
     try {
@@ -220,7 +220,7 @@ function PurchaseOrderModal({ onClose, onSaved }) {
 
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Line items</label>
         <LineItemsEditor items={items} onChange={setItems} products={products} />
-        <p className="text-xs text-slate-400 mt-1.5">Products must be linked from Inventory so they can be received against this order.</p>
+        <p className="text-xs text-slate-400 mt-1.5">Pick an existing product from the suggestions to fill its unit, price and tax; typed names that match no product are saved as-is.</p>
 
         <div className="mt-4">
           <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes</label>

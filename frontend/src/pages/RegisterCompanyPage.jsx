@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Globe2, ShieldCheck, ArrowLeft, Loader2 } from 'lucide-react'
+import { Building2, Globe2, ShieldCheck, ArrowLeft, Loader2, Upload } from 'lucide-react'
 import { Country, State } from "country-state-city";
-import { authApi } from  "../api/services";
+import { authApi, companyApi } from  "../api/services";
 import { useAuth } from '../context/AuthContext'
 
 const STEPS = ['Business Info', 'Address & Tax', 'Branding', 'Review']
@@ -26,6 +26,29 @@ export default function RegisterCompanyPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({});
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [logoError, setLogoError] = useState('')
+  const fileRef = useRef(null)
+
+  useEffect(() => () => { if (logoPreview) URL.revokeObjectURL(logoPreview) }, [logoPreview])
+
+  const handleLogoPick = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'].includes(file.type)) {
+      setLogoError('Logo must be a PNG, JPG, SVG or WebP image')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError('Logo must be 2MB or smaller')
+      return
+    }
+    setLogoError('')
+    setLogoFile(file)
+    setLogoPreview(URL.createObjectURL(file))
+  }
 
   const [form, setForm] = useState({
     company_name: '',
@@ -89,7 +112,15 @@ const handleSubmit = async () => {
 
     const response = await authApi.registerCompany(form);
 
-    login(response);
+    login(response.data.access_token, response.data.user);
+
+    if (logoFile) {
+      try {
+        await companyApi.uploadLogo(logoFile);
+      } catch {
+        // Company is already created; the logo can be added later from Company Profile
+      }
+    }
 
     navigate("/dashboard");
   } catch (err) {
@@ -111,6 +142,13 @@ return (
       </header>
 
       <div className="max-w-2xl mx-auto px-6 py-10">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 mb-4"
+        >
+          <ArrowLeft size={15} /> Back
+        </button>
         <h1 className="text-2xl font-bold text-slate-900">Register your company</h1>
         <p className="text-slate-500 text-sm mt-1 mb-6">Set up your first company. You can add more companies anytime from Settings.</p>
 
@@ -281,14 +319,24 @@ return (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-slate-900 font-semibold">Branding</div>
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg">
-                  {form.company_name ? form.company_name.slice(0, 2).toUpperCase() : 'SP'}
+                <div className="h-16 w-16 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg overflow-hidden">
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="Logo preview" className="h-full w-full object-contain" />
+                  ) : (
+                    form.company_name ? form.company_name.slice(0, 2).toUpperCase() : 'SP'
+                  )}
                 </div>
-                <div className="border border-dashed border-slate-300 rounded-lg px-4 py-3 text-sm text-slate-500 flex-1">
-                  Upload company logo
-                  <p className="text-xs text-slate-400 mt-0.5">PNG or SVG, min 256×256px, up to 2MB</p>
-                </div>
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={handleLogoPick} />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="border border-dashed border-slate-300 hover:border-brand-600 rounded-lg px-4 py-3 text-sm text-slate-500 flex-1 text-left"
+                >
+                  <span className="flex items-center gap-1.5"><Upload size={14} /> {logoFile ? `${logoFile.name} — click to change` : 'Upload company logo'}</span>
+                  <p className="text-xs text-slate-400 mt-0.5">PNG, JPG, SVG or WebP, up to 2MB</p>
+                </button>
               </div>
+              {logoError && <p className="text-xs text-red-600">{logoError}</p>}
               <p className="text-sm text-slate-500">You can update branding anytime from Company Profile → Branding after setup.</p>
             </div>
           )}
@@ -296,6 +344,12 @@ return (
           {step === 3 && (
             <div className="space-y-3 text-sm">
               <p className="font-semibold text-slate-900 mb-2">Review your details</p>
+              {logoPreview && (
+                <div className="flex items-center gap-3 pb-1">
+                  <img src={logoPreview} alt="Logo preview" className="h-12 w-12 rounded-lg border border-slate-200 object-contain bg-white" />
+                  <span className="text-slate-500 text-xs">Company logo</span>
+                </div>
+              )}
               <ReviewRow label="Company" value={form.company_name} />
               <ReviewRow label="Type" value={form.business_type} />
               <ReviewRow label="Industry" value={form.industry} />

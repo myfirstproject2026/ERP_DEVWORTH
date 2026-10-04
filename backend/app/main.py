@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from fastapi import Depends
 from app.core.config import settings
@@ -23,6 +25,11 @@ app.add_middleware(
 )
 
 
+_uploads = Path(__file__).resolve().parents[1] / "uploads"
+_uploads.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads), name="uploads")
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
@@ -38,9 +45,9 @@ def health_check():
 
 app.include_router(auth.router)
 app.include_router(companies.router)
-app.include_router(branches.router)
-app.include_router(users.router)
-app.include_router(roles.router)
+app.include_router(branches.router, dependencies=[Depends(require_module("branches", writes_only=True))])
+app.include_router(users.router, dependencies=[Depends(require_module("users", writes_only=True))])
+app.include_router(roles.router, dependencies=[Depends(require_module("roles_permissions"))])
 app.include_router(dashboard.router, dependencies=[Depends(require_module("dashboard"))])
 app.include_router(ai_assistant.router)
 app.include_router(sales_crm.router, dependencies=[Depends(require_module("sales_crm"))])

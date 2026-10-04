@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -6,6 +9,21 @@ from app import models, schemas
 from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/company", tags=["Company Profile"])
+
+UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "logos"
+LOGO_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/svg+xml": ".svg", "image/webp": ".webp"}
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+
+@router.get("/list", response_model=list[schemas.CompanyOut])
+def list_companies(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_owner:
+        raise HTTPException(status_code=403, detail="Only the company owner can view the company list")
+    # Read-only, tenant-scoped: only companies the signed-in user belongs to.
+    return db.query(models.Company).filter(models.Company.id == current_user.company_id).all()
 
 
 @router.get("/profile", response_model=schemas.CompanyOut)
@@ -36,6 +54,35 @@ def update_company_profile(
     for field, value in update_data.items():
         setattr(company, field, value)
 
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+@router.post("/logo", response_model=schemas.CompanyOut)
+async def upload_company_logo(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_owner:
+        raise HTTPException(status_code=403, detail="Only the company owner can edit company profile")
+    ext = LOGO_TYPES.get(file.content_type)
+    if not ext:
+        raise HTTPException(status_code=400, detail="Logo must be a PNG, JPG, SVG or WebP image")
+    data = await file.read()
+    if len(data) > MAX_LOGO_BYTES:
+        raise HTTPException(status_code=400, detail="Logo must be 2MB or smaller")
+
+    company = db.query(models.Company).filter(models.Company.id == current_user.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"company_{company.id}_{uuid.uuid4().hex[:8]}{ext}"
+    (UPLOAD_DIR / name).write_bytes(data)
+
+    company.logo_url = f"/uploads/logos/{name}"
     db.commit()
     db.refresh(company)
     return company

@@ -179,6 +179,7 @@ class UserInviteRequest(BaseModel):
     full_name: str
     mobile_number: Optional[str] = None
     email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
     role_id: int
     branch_id: int
     login_method: str = "email_invite"
@@ -186,6 +187,7 @@ class UserInviteRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
+    password: Optional[str] = Field(default=None, min_length=8, max_length=72)
     full_name: Optional[str] = None
     mobile_number: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -1300,6 +1302,12 @@ class EmployeeStatsOut(BaseModel):
     new_hires_this_month: int
 
 
+class LeaveTypeCreate(BaseModel):
+    leave_type_name: str
+    annual_quota: Decimal = Decimal("0")
+    is_paid: bool = True
+
+
 class LeaveTypeOut(BaseModel):
     id: int
     leave_type_name: str
@@ -1412,6 +1420,32 @@ class PayslipOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PayslipLeaveLine(BaseModel):
+    leave_type_name: str
+    is_paid: bool
+    days: Decimal
+
+
+class PayslipDetailOut(PayslipOut):
+    employee_code: str
+    designation: str
+    department_name: Optional[str] = None
+    branch_name: str
+    employment_type: str
+    date_of_joining: date
+    pan: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    attendance_recorded: int
+    present_days: int
+    half_days: int
+    absent_days: int
+    on_leave_days: int
+    holiday_days: int
+    week_off_days: int
+    leave_lines: List[PayslipLeaveLine] = []
 
 
 class HrOverviewOut(BaseModel):

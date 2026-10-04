@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Pencil } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { companyApi } from  "../api/services";
+import client from '../api/client'
 
 const TABS = ['Overview', 'Tax & Compliance', 'Branding', 'Subscription']
 
@@ -30,9 +31,6 @@ export default function CompanyProfilePage() {
           <p className="text-sm text-slate-500 mt-0.5">View registered details for {company.company_name}.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">
-            <Download size={15} /> Export as PDF
-          </button>
           <Link
             to="/company-profile/edit"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
@@ -95,8 +93,10 @@ export default function CompanyProfilePage() {
           )}
           {tab === 'Branding' && (
             <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg">
-                {initials}
+              <div className="h-16 w-16 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg overflow-hidden">
+                {company.logo_url ? (
+                  <img src={`${client.defaults.baseURL}${company.logo_url}`} alt="Company logo" className="h-full w-full object-contain" />
+                ) : initials}
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-800">Company logo</p>
@@ -117,8 +117,10 @@ export default function CompanyProfilePage() {
 
         <div className="space-y-5">
           <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="h-14 w-14 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg mb-3">
-              {initials}
+            <div className="h-14 w-14 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg mb-3 overflow-hidden">
+              {company.logo_url ? (
+                <img src={`${client.defaults.baseURL}${company.logo_url}`} alt="Company logo" className="h-full w-full object-contain" />
+              ) : initials}
             </div>
             <p className="font-semibold text-slate-900">{company.company_name}</p>
             <p className="text-xs text-slate-400 mb-2">{company.industry.split('—')[0].trim()} · {company.city} HQ</p>

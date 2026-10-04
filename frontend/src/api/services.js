@@ -20,8 +20,14 @@ export const authApi = {
 // COMPANY
 // ============================================================
 export const companyApi = {
+  list: () => client.get('/api/company/list'),
   getProfile: () => client.get('/api/company/profile'),
   updateProfile: (payload) => client.put('/api/company/profile', payload),
+  uploadLogo: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return client.post('/api/company/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   getSnapshot: () => client.get('/api/company/snapshot'),
 }
 
@@ -43,6 +49,7 @@ export const branchesApi = {
 export const usersApi = {
   list: (params = {}) => client.get('/api/users', { params }),
   stats: () => client.get('/api/users/stats'),
+  options: () => client.get('/api/users/options'),
   invite: (payload) => client.post('/api/users/invite', payload),
   get: (id) => client.get(`/api/users/${id}`),
   update: (id, payload) => client.put(`/api/users/${id}`, payload),
@@ -71,6 +78,7 @@ export const dashboardApi = {
   production: () => client.get('/api/dashboard/production'),
   attendance: () => client.get('/api/dashboard/attendance'),
   customerFollowup: () => client.get('/api/dashboard/customer-followup'),
+  exportFile: (kind) => client.get(`/api/dashboard/export/${kind}`, { responseType: 'blob' }),
 }
 
 // ============================================================
@@ -255,6 +263,10 @@ export const hrApi = {
 
   // Leave
   listLeaveTypes: () => client.get('/api/hr/leave-types'),
+  getPayslipDetail: (id) => client.get(`/api/hr/payslips/${id}/detail`),
+  createLeaveType: (payload) => client.post('/api/hr/leave-types', payload),
+  updateLeaveType: (id, payload) => client.put(`/api/hr/leave-types/${id}`, payload),
+  deleteLeaveType: (id) => client.delete(`/api/hr/leave-types/${id}`),
   listLeaveRequests: (params = {}) => client.get('/api/hr/leave-requests', { params }),
   createLeaveRequest: (payload) => client.post('/api/hr/leave-requests', payload),
   decideLeaveRequest: (id, payload) => client.put(`/api/hr/leave-requests/${id}/decision`, payload),

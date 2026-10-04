@@ -80,8 +80,12 @@ def allowed_module_keys(db: Session, user: models.User) -> list:
     return [r[0] for r in rows]
 
 
-def require_module(module_key: str):
-    """Router-level dependency enforcing the role's view/add/edit/delete flag for a module."""
+def require_module(module_key: str, writes_only: bool = False):
+    """Router-level dependency enforcing the role's view/add/edit/delete flag for a module.
+
+    writes_only=True skips the check for read requests (GET/HEAD/OPTIONS) so shared lookup
+    data (users/branches dropdowns used by other modules) stays readable to any signed-in user.
+    """
 
     def checker(
         request: Request,
@@ -91,6 +95,8 @@ def require_module(module_key: str):
         if user.is_owner:
             return user
         flag = _METHOD_TO_FLAG.get(request.method, "can_edit")
+        if writes_only and flag == "can_view":
+            return user
         perm = (
             db.query(models.RolePermission)
             .join(models.Module, models.Module.id == models.RolePermission.module_id)
